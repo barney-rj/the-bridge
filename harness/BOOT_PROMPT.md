@@ -22,6 +22,7 @@ Read `harness/agents.yml`. Extract:
 - System identity (name, subtitle, bus project ID)
 - All objectives (id, name, description, quadrant)
 - All agents (id, name, tier, role, status, tools, objectives, connections, authority, bus_address, instructions)
+- Optional managed runtime metadata when present (`runtime`, `managed`)
 
 Report: "Found N agents across M tiers, serving P objectives."
 
@@ -59,7 +60,85 @@ For each agent in `agents.yml`:
 
 Report: "Generated instruction files for N agents."
 
-### Step 4 — Generate the Bridge config
+### Step 4 — Configure optional Anthropic Managed Agents
+
+Check whether any agent has `runtime: managed`.
+
+If no managed agents are defined:
+1. Continue with the standard Claude Code flow
+2. Do not create managed-agent dispatcher config files
+3. Do not remove or rewrite any existing root `CLAUDE.md`
+
+If managed agents are defined:
+1. Create `harness/generated/managed-agents.json`
+2. Shape it for bridge-dispatcher bootstrap/config handoff, not as a generic
+   process-launch spec. Include:
+   - `schema_version`
+   - one entry per managed agent with local `id`, `bus_address`, `runtime`,
+     `model`, `team_id`, `use_case_id`, and isolated `bus_namespace`
+   - `agent_id` and `version` placeholders for the Anthropic Managed Agent
+     definition that dispatcher/bootstrap will create or resolve
+   - `env_id` placeholder for the Anthropic environment assigned to the
+     team/use-case boundary
+   - `memory_store_ids.shared` and `memory_store_ids.private` placeholders,
+     seeded from `memory.shared` and `memory.private` when present
+   - optional `vault_ids` placeholders only when the bootstrap workflow has
+     scoped credential references available
+   - `cadence_minutes` copied from `managed.cadence_minutes` when present
+   - `outcome.rubric_file` and `outcome.max_iterations` when present
+   - `multiagent.type` and `multiagent.agents`, keeping `agents` as local
+     harness agent ids for bridge-dispatcher/bootstrap resolution
+3. Preserve team/use-case isolation. Never merge managed agents from different
+   `team_id` or `use_case_id` into the same `bus_namespace`, environment
+   placeholder, or memory-store placeholder.
+4. Do not claim this prompt can safely create all Anthropic resources by
+   itself. If Anthropic Managed Agents credentials and the dispatcher bootstrap
+   tooling are available, hand off to that bootstrap script. Otherwise, emit
+   the JSON with placeholders and tell the user to follow the internal
+   bridge-dispatcher runbook at
+   `/Users/bryanj/dev/bridge-dispatcher/docs/ARCHITECTURE.md`.
+5. Keep generating `harness/generated/{agent.id}/CLAUDE.md` for every agent, including managed agents, so Claude Code/manual operation remains available
+6. Do not destructively edit the root `CLAUDE.md`; only append a short "Managed Agents" note if a root file already exists and the user approves
+
+Example entry shape:
+
+```json
+{
+  "schema_version": "managed-agents.v1",
+  "agents": [
+    {
+      "id": "nightly-analyst",
+      "bus_address": "managed.analytics.nightly",
+      "runtime": "managed",
+      "model": "claude-sonnet-4-5",
+      "team_id": "team-growth",
+      "use_case_id": "daily-analysis",
+      "bus_namespace": "team-growth/daily-analysis/nightly-analyst",
+      "agent_id": "anthropic-agent-id-placeholder",
+      "version": "anthropic-agent-version-placeholder",
+      "env_id": "anthropic-env-id-placeholder",
+      "memory_store_ids": {
+        "shared": ["mem_growth_shared"],
+        "private": ["mem_nightly_analyst"]
+      },
+      "vault_ids": [],
+      "cadence_minutes": 1440,
+      "outcome": {
+        "rubric_file": "harness/rubrics/daily-analysis.md",
+        "max_iterations": 2
+      },
+      "multiagent": {
+        "type": "review",
+        "agents": ["nightly-analyst", "outcome-reviewer"]
+      }
+    }
+  ]
+}
+```
+
+Report: "Managed Agents skipped; no managed agents defined" or "Managed Agents dispatcher config generated for N agents."
+
+### Step 5 — Generate the Bridge config
 
 Create a JavaScript config file at `harness/generated/bridge-config.js` that:
 1. Maps each agent to a Bridge `Entity` object:
@@ -87,10 +166,12 @@ Create a JavaScript config file at `harness/generated/bridge-config.js` that:
 
 Report: "Bridge config generated with N entities and M objectives."
 
-### Step 5 — Write the system CLAUDE.md
+### Step 6 — Write the system CLAUDE.md
 
-Create a root-level `CLAUDE.md` (or append to existing) that gives any Claude
-session awareness of the agent fleet:
+Create a root-level `CLAUDE.md` if one does not exist, or append to an existing
+one only with the user's approval. Never delete or overwrite unrelated
+root-level instructions. The file should give any Claude session awareness of
+the agent fleet:
 
 ```markdown
 # [System Name] — Agent Operating System
@@ -113,9 +194,19 @@ session awareness of the agent fleet:
 2. On end: write HANDOFF message, flag unresolved items
 ```
 
+If managed agents exist and the user approves appending to an existing
+`CLAUDE.md`, add only this short note:
+
+```markdown
+## Managed Agents
+- Optional dispatcher config: `harness/generated/managed-agents.json`
+- Internal bridge-dispatcher runbook: `/Users/bryanj/dev/bridge-dispatcher/docs/ARCHITECTURE.md`
+- Manual fallback: use each agent's generated `CLAUDE.md`
+```
+
 Report: "System CLAUDE.md written."
 
-### Step 6 — Seed the bus
+### Step 7 — Seed the bus
 
 Write an initial message to the handoff table:
 
@@ -133,7 +224,7 @@ VALUES (
 
 Report: "Bus seeded with bootstrap message."
 
-### Step 7 — Summary and next steps
+### Step 8 — Summary and next steps
 
 Print a summary table:
 

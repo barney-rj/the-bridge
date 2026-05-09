@@ -1,0 +1,11 @@
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+node_modules
+examples/dev-server/node_modules
+examples/dev-server/dist
+dist
+.vercel
+**/.vercel

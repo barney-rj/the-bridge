@@ -1,19 +1,20 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Bridge } from "the-bridge";
-import config from "../../demo-config.js";
 
 /**
  * Dev server entry point.
  *
- * Mounts The Bridge with the demo config (Platform Engineering team).
- * Edit demo-config.js or create your own config to customise.
- *
- * To use your own config:
- *   1. Copy demo-config.js to my-config.js
- *   2. Edit the entities, objectives, backlog, etc.
- *   3. Change the import above to point at your config
+ * Mounts The Bridge with VITE_BRIDGE_CONFIG when set. The onboarding script
+ * creates examples/my-config.js, which is preferred automatically when present.
  */
+const configs = import.meta.glob("../../*.js", { eager: true, import: "default" });
+const requestedConfig = import.meta.env.VITE_BRIDGE_CONFIG || "../../my-config.js";
+const config = configs[requestedConfig] || configs["../../estate-agent-config.js"] || configs["../../demo-config.js"];
+
+if (!config) {
+  throw new Error(`Bridge config not found: ${requestedConfig}`);
+}
 
 const root = createRoot(document.getElementById("root"));
 root.render(

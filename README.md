@@ -1,371 +1,230 @@
-# THE BRIDGE
+# The Bridge
 
-A configurable, dual-mode control room dashboard for complex systems. Pass a config object, get a control room. Built for operators — people running platform teams, agent fleets, delivery programmes, or portfolios with interconnected moving parts.
+The Bridge is a configurable React control-room dashboard. It renders entities, objectives, work queues, approvals, dispatcher identity, imports, cases, audit events, and integration posture from a plain JavaScript config object.
 
-## What It Is
+The system has four related surfaces:
 
-THE BRIDGE is a React-based dashboard that brings order to complexity. It's built for operators, not reporters—people running multi-agent systems, large programmes, or portfolios with interconnected moving parts.
+- **Dashboard**: the React component exported by `the-bridge`.
+- **Harness**: files under `harness/` that define agents, authority, Managed Agents enrollment metadata, and a Postgres/Supabase handoff bus.
+- **Managed Agents**: Anthropic-hosted agents, environments, sessions, events, permission policies, webhooks, and multi-agent references created from harness YAML when enrolled.
+- **Runtime API**: `/bridge-api` calls from the dashboard. The browser only talks to this boundary; it never calls Anthropic directly.
 
-Built for any system where you need:
+## What Works Here
 
-- Real-time visibility into entity status (agents, teams, services, systems)
-- Dual-mode operation (BUILD for delivery, OPS for stewardship)
-- Strategic objective tracking and health monitoring
-- Kanban workflow and task boards
-- Decision authority matrix and risk detection
+- Config-driven dashboard rendering through `<Bridge config={config} />`.
+- Static or dispatcher-backed data in `config.data`.
+- Mode tabs that choose panel components such as `EntityGrid`, `KanbanBoard`, `LiveTaskBoard`, `TenantIdentityPanel`, `ImportReviewPanel`, `CaseDetailPanel`, `ApprovalQueuePanel`, `AuditTrailPanel`, and `AdminIntegrationSettingsPanel`.
+- Dispatcher identity, tasks, imports, cases, approvals, audit events, integrations, and agent roster polling through `config.dispatcher`.
+- Same-origin runtime boundary at `/bridge-api` with `mock`, `proxy`, and `managed` modes.
+- Local mock API mode for development when no dispatcher token is configured.
+- Harness docs, templates, bus schema, and examples for manual Claude sessions and Managed Agents enrollment.
+- `npm run harness:managed:plan` validates `harness/agents.yml` and prints the planned Agent, Environment, Session, and bus mapping.
+- `npm run harness:managed:enroll` uses server-side Anthropic credentials to create or update Managed Agents resources, then writes non-secret state to `harness/generated/managed-agents.json`.
 
-## Key Features
-
-**Dual Mode**
-- **BUILD**: Delivery crew view. Backlog, waves, skills, blocking issues.
-- **OPS**: Stewardship crew view. Inbox, metrics, risks, governance.
-- One-click toggle. Different tabs, stats, and crew visibility per mode.
-
-**11 Panel Types**
-- Entity Hierarchy (tier-based, sortable, searchable)
-- Objective Progress (KSO tracking with risk/win backlogs)
-- Kanban Board (7+ configurable columns with drag-drop)
-- Task Board (personal/operational, priority-sorted)
-- Bus Metrics (handoff table health, staleness, volume)
-- Quadrant Balance (Heart/Body/Mind/Soul allocation)
-- Pattern Library (operational and architectural patterns)
-- Integration Status (external system connectivity)
-- Capability Matrix (Agent/Environment/Governance capabilities)
-- Mode-specific tabs (configurable per mode)
-- Detail Drawers (entity drill-down, objective deep-dive)
-
-**Health & Status**
-- 6-state health indicators: G (Green), Gr (Green-ready), A (Amber), R (Red), Dim (future), None
-- Status lifecycle: active, staged, planned, gap, concept, blocked, resolved
-- Real-time drift detection (health regressions signal work needed)
-- Entity connection topology mapping
-
-**Entity Hierarchy**
-- Multi-tier system (T0 strategic through T4 guardians)
-- Role taxonomy (Principal, Orchestrator, Domain Lead, Operator, etc.)
-- Surface multiplexing (PRIMARY, ACCENT, TERTIARY)
-- Connection topology visualization
-- Entity dimming for future/incomplete agents
-
-**Workflow**
-- Kanban with unlimited custom columns
-- Drag-drop item movement with persistence
-- Priority taxonomy (critical/high/normal/low)
-- Item-to-objective (KSO) traceability
-- Real-time filtering and search
-
-**Decision Support**
-- Authority matrix (D-sovereign/D-delegated/D-internal)
-- Risk and win backlogs per objective
-- Capability inventory (what's built, what's missing)
-- Pattern registry (reference implementations)
-- Integration inventory (what's connected)
+The dashboard itself does not run agents, keep Anthropic secrets, stream directly from Anthropic, or persist drag-and-drop Kanban movement. Kanban columns and items are rendered from config or `/bridge-api` projections. "Real-time" in this repo means polling or webhook-refreshed server projections, not a browser socket to the managed runtime.
 
 ## Quick Start
 
+```bash
+npm run setup
+```
+
+The onboarding script installs the dev-server dependencies, creates `examples/my-config.js` from the current estate-agent example when needed, and starts Vite with that file loaded.
+
+Manual start:
+
+```bash
+cd examples/dev-server
+npm install
+npm run dev
+```
+
+By default, the dev server serves `/bridge-api` from a deterministic mock so the dashboard can run without `BRIDGE_DASHBOARD_TOKEN` or `ANTHROPIC_API_KEY`.
+
+To proxy to a dispatcher instead:
+
+```bash
+BRIDGE_RUNTIME_MODE=proxy \
+BRIDGE_DISPATCHER_URL=https://bridge.patchworks.ai \
+BRIDGE_DASHBOARD_TOKEN=... \
+BRIDGE_PROXY_CLIENT_TOKEN=... \
+npm run dev
+```
+
+To run the managed boundary locally after enrollment:
+
+```bash
+npm run harness:managed:plan
+ANTHROPIC_API_KEY=... npm run harness:managed:enroll
+BRIDGE_RUNTIME_MODE=managed \
+ANTHROPIC_API_KEY=... \
+BRIDGE_CLIENT_TOKEN=... \
+npm run dev
+```
+
+For local managed mode, the Vite middleware injects `BRIDGE_CLIENT_TOKEN` or `BRIDGE_MANAGED_CLIENT_TOKEN` into same-process `/bridge-api` calls. Do not expose that token in browser config. In deployed mode, put The Bridge behind an authenticated same-origin app or gateway that adds the trusted client header before the API handler runs.
+
+## Library Usage
+
 ```jsx
 import React from "react";
-import Bridge from "@bridge/dashboard";
-import { defaultTheme } from "@bridge/theme";
+import { Bridge, defaultTheme } from "the-bridge";
 
-const MinimalConfig = {
-  name: "My System",
-  entities: [
-    { id: "alice", name: "Alice", tier: "T0", role: "Principal", status: "active" },
-    { id: "bob", name: "Bob", tier: "T1", role: "Domain Lead", status: "active" },
-  ],
-  objectives: [
+const config = {
+  title: "#MY_CONTROL_ROOM",
+  subtitle: "Operations cockpit",
+  theme: defaultTheme,
+  data: {
+    entities: [
+      {
+        id: "coordinator",
+        name: "Coordinator",
+        tier: "T0",
+        role: "Owns triage and routing",
+        status: "active",
+        healthState: "G",
+      },
+    ],
+    objectives: [
+      {
+        id: "ship",
+        code: "SHIP",
+        name: "Ship priority work",
+        progress: 65,
+        healthState: "Gr",
+      },
+    ],
+    kanban: [
+      { id: "intake", label: "Intake" },
+      { id: "live", label: "Live" },
+      { id: "done", label: "Done" },
+    ],
+    backlog: [
+      {
+        id: "task-1",
+        topic: "Prepare launch checklist",
+        stage: "live",
+        priority: "high",
+        owner: "coordinator",
+      },
+    ],
+  },
+  modes: [
     {
-      id: "obj1",
-      name: "Deliver Feature X",
-      progress: 65,
-      health: "Gr",
-      quadrant: "Mind",
-    },
-  ],
-  kanbanColumns: [
-    { id: "backlog", name: "Backlog" },
-    { id: "in-progress", name: "In Progress" },
-    { id: "done", name: "Done" },
-  ],
-  backlog: [
-    {
-      id: "task1",
-      title: "Build API endpoint",
-      column: "in-progress",
-      assignee: "alice",
-      priority: "high",
+      id: "ops",
+      label: "OPS",
+      tabs: [
+        { id: "team", label: "Team", panel: "EntityGrid" },
+        { id: "work", label: "Work", panel: "KanbanBoard" },
+      ],
     },
   ],
 };
 
 export default function App() {
-  return (
-    <Bridge
-      config={MinimalConfig}
-      theme={defaultTheme}
-      onAction={(action, target, metadata) => {
-        console.log("Action:", action, target, metadata);
-      }}
-    />
-  );
+  return <Bridge config={config} />;
 }
 ```
 
-## Agent Harness
+Import from the package root:
 
-The Bridge shows you the dashboard. The **harness** stands up the agents that feed it.
+```js
+import { Bridge, createTheme, defaultTheme } from "the-bridge";
+import { fetchDispatcherIdentity } from "the-bridge/dispatcherClient";
+```
 
-The harness (`harness/` directory) gives you:
+## Config Shape
 
-- **Agent definitions** — YAML config describing your agent fleet (who, what tier, what authority)
-- **Message bus** — A Postgres table where agents communicate (Supabase or any Postgres)
-- **Boot prompt** — Paste into Claude to auto-generate agent instructions and Bridge config
-- **Decision authority** — Clear boundaries on what agents can do autonomously vs. what needs human approval
-- **Audit trail** — Every inter-agent message is logged
+The current dashboard shape is:
 
-### Quick start (harness)
+```js
+{
+  title: string,
+  subtitle?: string,
+  theme?: object,
+  dispatcher?: {
+    proxyBase?: string,        // defaults to "/bridge-api"
+    pollIntervalMs?: number,   // defaults to 15000
+    limit?: number,            // defaults to 75
+    credentials?: "same-origin" | "include" | "omit"
+  },
+  taskTemplates?: Array<object>,
+  modes?: Array<{
+    id: string,
+    label: string,
+    subtitle?: string,
+    tabs?: Array<{ id: string, label: string, panel: string }>,
+    stats?: Array<{ label: string, value: string | number, color?: string }>,
+    crew?: Array<object>
+  }>,
+  data: {
+    entities?: Array<object>,
+    objectives?: Array<object>,
+    backlog?: Array<object>,
+    tasks?: Array<object>,
+    kanban?: Array<object>,
+    capabilities?: Array<object>,
+    patterns?: Array<object>,
+    integrations?: Array<object>,
+    tenant?: object,
+    branch?: object,
+    requester?: object,
+    importReviews?: Array<object>,
+    cases?: Array<object>,
+    approvals?: Array<object>,
+    auditEvents?: Array<object>,
+    adminIntegrations?: Array<object>,
+    outcomes?: Array<object>,
+    quadrants?: Array<object>
+  }
+}
+```
+
+See `src/types.js` and `examples/estate-agent-config.js` for the full documented shape.
+
+## Runtime API
+
+When `config.dispatcher` is present, the dashboard calls:
+
+- `GET /bridge-api/me`
+- `GET /bridge-api/tasks`
+- `POST /bridge-api/tasks`
+- `GET /bridge-api/imports`
+- `POST /bridge-api/imports`
+- `GET /bridge-api/cases`
+- `GET /bridge-api/approvals`
+- `PATCH /bridge-api/approvals/:id`
+- `GET /bridge-api/audit-events`
+- `GET /bridge-api/integrations`
+- `GET /bridge-api/agent-roster`
+
+`BRIDGE_RUNTIME_MODE` controls the server-side behavior:
+
+- `mock`: deterministic local payloads for onboarding, demos, and tests.
+- `proxy`: forwards to `BRIDGE_DISPATCHER_URL` and injects `BRIDGE_DASHBOARD_TOKEN` as the upstream bearer token. Public deployments should set `BRIDGE_PROXY_CLIENT_TOKEN` behind an authenticated same-origin app or gateway that adds the trusted client header before the API handler runs. Browser cookies, browser authorization, tenant spoofing headers, host, and hop-by-hop headers are not forwarded.
+- `managed`: serves dashboard projections from `harness/generated/managed-agents.json`, creates Anthropic Managed Agents sessions for `POST /bridge-api/tasks`, sends the first `user.message`, and accepts webhook updates. This mode requires `ANTHROPIC_API_KEY` on the server for task creation, `BRIDGE_MANAGED_CLIENT_TOKEN` or `BRIDGE_CLIENT_TOKEN` before mutating endpoints spend server credentials, and `ANTHROPIC_WEBHOOK_SIGNING_KEY` or `BRIDGE_ANTHROPIC_WEBHOOK_SECRET` for webhook intake. Local demos can explicitly set `BRIDGE_ALLOW_UNAUTHENTICATED_MANAGED=true`.
+
+The Vite dev server uses mock mode automatically when no dashboard token is configured; the deployed API defaults to proxy mode unless `BRIDGE_RUNTIME_MODE` or the legacy `BRIDGE_API_MODE` is set.
+
+## Harness
+
+The harness is an onboarding and coordination scaffold, not the dashboard renderer:
+
+- `harness/agents.yml` describes agents, authority boundaries, objectives, and bus addresses.
+- `harness/bus-schema.sql` defines the Postgres/Supabase handoff bus.
+- `harness/templates/` contains per-agent instruction templates.
+- `harness/BOOT_PROMPT.md` is a copy-paste bootstrap prompt for Claude.
+- `harness/examples/managed-fleet.yml` shows Managed Agents metadata.
+
+Managed Agents enrollment follows Anthropic's Agent, Environment, Session, Events, Permission Policy, Webhook, and Multiagent concepts. The plan command writes placeholders such as `agent_id`, `version`, and `env_id` without API calls; the enroll command replaces them with returned non-secret IDs. API keys, vault credentials, transcripts, and webhook secrets are never written to `harness/generated/managed-agents.json`.
+
+## Tests
 
 ```bash
-# 1. Define your agents
-cp harness/examples/startup-ops.yml harness/agents.yml
-# Edit to match your world
-
-# 2. Set up the bus
-psql -f harness/bus-schema.sql
-# Or paste into Supabase SQL Editor
-
-# 3. Boot the system
-# Open Claude, paste the contents of harness/BOOT_PROMPT.md
-# Claude reads agents.yml, generates everything, wires it up
-
-# 4. Start operating
-# Open The Bridge with the generated config
-# Start agent sessions with the generated CLAUDE.md files
+npm test
 ```
 
-See `harness/README.md` for the full guide and schema reference.
-
-## Configuration
-
-### BridgeConfig Shape
-
-```typescript
-interface BridgeConfig {
-  // System identity
-  name: string;
-  subtitle?: string;
-  version?: string;
-
-  // Core data
-  entities: Entity[];
-  objectives: Objective[];
-  kanbanColumns: KanbanColumn[];
-  backlog: BacklogItem[];
-  tasks: Task[];
-
-  // Capability and pattern inventory
-  capabilities?: Capability[];
-  patterns?: Pattern[];
-  integrations?: Integration[];
-
-  // Metrics
-  metrics?: Metrics;
-
-  // Life quadrants (optional, for personal systems)
-  outcomes?: Outcome[];
-  quadrants?: Quadrant[];
-
-  // Operating modes
-  modes?: Mode[];
-
-  // UI config
-  footer?: FooterConfig;
-
-  // Callbacks
-  getStarterPrompt?: () => string;
-  onAction?: (action: string, target: any, metadata?: any) => ActionResult;
-}
-
-interface Entity {
-  id: string;
-  name: string;
-  tier: string; // "T0" | "T1" | "T2" | "T3" | "T4"
-  role: string;
-  status: "active" | "staged" | "planned" | "gap" | "concept" | "blocked";
-  health?: "G" | "Gr" | "A" | "R";
-  icon?: string;
-  busMessages?: number;
-  connections?: string[]; // array of entity IDs
-  dimmed?: boolean; // visual suppression for future agents
-  surfaces?: string[]; // multiplexing: PRIMARY, ACCENT, TERTIARY
-}
-
-interface Objective {
-  id: string;
-  name: string;
-  description: string;
-  progress: number; // 0-100
-  health: "G" | "Gr" | "A" | "R";
-  quadrant?: string; // "Heart" | "Body" | "Mind" | "Soul" | "Chassis"
-  risks?: string[];
-  wins?: string[];
-}
-
-interface BacklogItem {
-  id: string;
-  title: string;
-  description: string;
-  column: string; // kanbanColumns[].id
-  priority: "critical" | "high" | "normal" | "low";
-  assignee: string; // entities[].id
-  due?: string; // ISO date
-  kso?: string; // objectives[].id (traceability)
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  due?: string;
-  priority: "critical" | "high" | "normal" | "low";
-  category?: string;
-  assignee?: string;
-  recurring?: "daily" | "weekly" | "monthly";
-}
-
-interface Capability {
-  id: string;
-  code: string; // "A1", "E2", "G3", etc.
-  name: string;
-  category: "Agent" | "Environment" | "Governance";
-}
-
-interface Pattern {
-  id: string;
-  name: string;
-  description: string;
-}
-
-interface Integration {
-  id: string;
-  name: string;
-  icon?: string;
-  status: "active" | "staged" | "gap";
-}
-
-interface Mode {
-  id: string;
-  name: string;
-  subtitle?: string;
-  color?: string;
-  crew?: string[]; // array of entity IDs
-  tabs?: string[];
-  stats?: Record<string, any>;
-}
-```
-
-## Panel Types
-
-**Entity Hierarchy**
-Multi-tier system view with role, status, and health. Sortable by tier, role, or status. Click to open detail drawer. Shows bus message volume and connection topology.
-
-**Objective Progress**
-KSO tracking with health status, progress bar, risk/win backlogs. Quadrant allocation (Heart/Body/Mind/Soul). Colour-coded health state.
-
-**Kanban Board**
-Drag-drop workflow across custom columns. Items carry priority, assignee, due date, KSO traceability. Real-time filtering by priority or assignee.
-
-**Task Board**
-Personal/operational tasks sorted by priority and due date. Recurring task indicators. Mark-done actions with refresh.
-
-**Bus Metrics**
-Handoff table health snapshot: total messages, actioned, pending, stale. Average response time. Health state with timestamp.
-
-**Quadrant Balance**
-Radar or circular chart showing Heart/Body/Mind/Soul allocation percentages. Useful for life or programme portfolio balancing.
-
-**Pattern Library**
-Searchable, categorised reference implementations. Operational patterns, architectural patterns, decision frameworks.
-
-**Integration Status**
-External system connectivity: Supabase, Notion, GitHub, Stripe, Gmail, etc. Status per integration (active/staged/gap).
-
-**Capability Matrix**
-What capabilities exist (Agent, Environment, Governance). Used for gap analysis and feature planning.
-
-**Mode Tabs**
-Dynamic tabs based on selected mode (BUILD or OPS). BUILD shows backlog/waves/skills; OPS shows inbox/metrics/risks.
-
-**Detail Drawers**
-Entity drill-down: connections, bus message detail, contact info, permissions. Objective deep-dive: risks, wins, related backlog, KSO cascade.
-
-## Theming
-
-THE BRIDGE uses a minimal, configurable theme system.
-
-```typescript
-interface Theme {
-  colors: {
-    bg: string;
-    text: string;
-    border: string;
-    health: Record<string, string>;
-    priority: Record<string, string>;
-    status: Record<string, string>;
-  };
-  spacing: Record<string, string>;
-  fonts: Record<string, string>;
-}
-```
-
-**Use Cases**
-
-```jsx
-import { defaultTheme, lightTheme, createTheme } from "@bridge/theme";
-
-// Built-in themes
-<Bridge config={config} theme={defaultTheme} />
-<Bridge config={config} theme={lightTheme} />
-
-// Custom theme
-const customTheme = createTheme({
-  primary: "#3B82F6",
-  success: "#10B981",
-  warning: "#F59E0B",
-  danger: "#EF4444",
-});
-
-<Bridge config={config} theme={customTheme} />
-```
-
-## Examples
-
-See `/examples/demo-config.js` for a complete working configuration — a platform engineering team managing 18 microservices across 4 tiers, tracking reliability, velocity, security, and cost objectives.
-
-The demo config shows:
-
-- 18 services across 4 tiers (Core Platform → Business → Support → Infrastructure + Guardians)
-- 5 objectives with risk/win backlogs
-- 15 backlog items across a 7-column kanban
-- 8 operational tasks with priority, category, and assignment
-- 17 capabilities (Reliability, Delivery, Security, Observability)
-- 12 architectural patterns
-- 10 external integrations
-- Dual modes (BUILD for shipping, OPS for operations) with crew assignments
-- Quadrant balance (Platform / Delivery / Trust)
-
-Use this as a starting point for your own domain.
-
-## Use Cases
-
-THE BRIDGE is domain-agnostic. The config schema maps to any system with entities, objectives, and workflow:
-
-- **Platform engineering** — services, SLOs, incidents, deployments
-- **AI/ML operations** — models, pipelines, experiments, drift detection
-- **Programme delivery** — workstreams, milestones, risks, dependencies
-- **Multi-agent systems** — agents, health states, message flow, governance
-- **Product portfolios** — products, OKRs, feature pipeline, integrations
+The tests are pure Node tests and do not require `ANTHROPIC_API_KEY`.
 
 ## License
 

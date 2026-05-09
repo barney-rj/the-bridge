@@ -14,13 +14,13 @@ set -euo pipefail
 # What it does:
 #   1. Checks prerequisites (node, npm)
 #   2. Installs dev server dependencies
-#   3. Copies demo config as your starting point
+#   3. Copies the current dev-server config as your starting point
 #   4. Starts the dev server
 # ============================================================================
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV_SERVER="$REPO_ROOT/examples/dev-server"
-DEMO_CONFIG="$REPO_ROOT/examples/demo-config.js"
+DEMO_CONFIG="$REPO_ROOT/examples/estate-agent-config.js"
 USER_CONFIG="$REPO_ROOT/examples/my-config.js"
 
 echo ""
@@ -56,7 +56,7 @@ echo "  ✓ Dependencies installed"
 # --- Create user config if not exists ---
 if [ ! -f "$USER_CONFIG" ]; then
   echo ""
-  echo "▸ Creating your config from demo template..."
+  echo "▸ Creating your config from dev-server template..."
   cp "$DEMO_CONFIG" "$USER_CONFIG"
   echo "  ✓ Created examples/my-config.js"
   echo "    Edit this file to build your own control room."
@@ -75,7 +75,8 @@ echo "  │                                                  │"
 echo "  │  Next steps:                                     │"
 echo "  │  1. Open http://localhost:5173 in your browser   │"
 echo "  │  2. Edit examples/my-config.js                   │"
-echo "  │  3. The dashboard hot-reloads on save            │"
+echo "  │  3. The dev server loads that file automatically │"
+echo "  │     and the dashboard hot-reloads on save        │"
 echo "  │                                                  │"
 echo "  │  Want agents? See harness/README.md              │"
 echo "  │  → Define agents in harness/agents.yml           │"
@@ -85,4 +86,4 @@ echo "  │  Press Ctrl+C to stop                            │"
 echo "  └──────────────────────────────────────────────────┘"
 echo ""
 
-npm run dev
+VITE_BRIDGE_CONFIG="../../my-config.js" npm run dev

@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd examples/dev-server && npm install && npm run build",
+  "outputDirectory": "examples/dev-server/dist",
+  "rewrites": [
+    {
+      "source": "/bridge-api/(.*)",
+      "destination": "/api/bridge/$1"
+    }
+  ]
+}

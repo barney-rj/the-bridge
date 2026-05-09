@@ -21,6 +21,31 @@
 #   authority:   What decisions this agent can make autonomously
 #   bus_address:  Entity ID for message routing (e.g. "cowork.ops.scheduler")
 #   instructions: Free-text operating instructions for Claude
+#
+# Optional Anthropic Managed Agents fields:
+#   runtime:       Runtime adapter for this agent. Omit for existing Claude Code
+#                  behavior. Use "managed" when bridge-dispatcher should enroll
+#                  the agent with Anthropic Managed Agents instead of relying
+#                  only on a pasted CLAUDE.md session.
+#   model:         Anthropic model for the managed agent.
+#   managed:
+#     team_id:           Dispatcher tenant boundary.
+#     use_case_id:       Dispatcher workload boundary within the team.
+#     cadence_minutes:   Optional polling/session cadence for scheduled work.
+#   memory:
+#     shared:      Shared memory store ids made available to this agent.
+#     private:     Private memory store ids for this agent only.
+#   outcome:
+#     rubric_file:     Local rubric file for outcome review.
+#     max_iterations:  Maximum outcome revision attempts.
+#   multiagent:
+#     type:        Optional Managed Agents multiagent mode.
+#     agents:      Local harness agent ids; bootstrap resolves them to managed
+#                  agent/version placeholders for bridge-dispatcher.
+#
+# These fields are additive metadata for Anthropic Managed Agents enrollment.
+# The boot prompt still generates harness/generated/{agent.id}/CLAUDE.md for
+# every agent so Claude Code/manual operation remains available.
 # ============================================================================
 
 # --- System Identity ---

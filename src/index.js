@@ -12,3 +12,14 @@
 
 export { Bridge } from "./Bridge.jsx";
 export { defaultTheme, lightTheme, createTheme, themes } from "./theme.js";
+export {
+  fetchBridgeTasks,
+  fetchDispatcherIdentity,
+  submitBridgeTask,
+  normalizeDispatcherIdentity,
+  buildDispatcherContext,
+  dispatcherTaskParams,
+  fetchBridgeResource,
+  createBridgeImport,
+  decideBridgeApproval,
+} from "./dispatcherClient.js";

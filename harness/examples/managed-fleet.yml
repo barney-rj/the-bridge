@@ -1,0 +1,165 @@
+# ============================================================================
+# Example: Managed Fleet - Claude Code plus Anthropic Managed Agents
+#
+# This example keeps the orchestrator manual-friendly while declaring the
+# metadata bridge-dispatcher needs to enroll Anthropic Managed Agents. It
+# intentionally avoids dispatcher/V2 process-launch fields; bootstrap resolves
+# local harness ids into Anthropic agent/version/environment placeholders.
+# ============================================================================
+
+system:
+  name: "Managed Mission Control"
+  subtitle: "Hybrid Claude Code and Anthropic Managed Agents"
+  bus_project_id: "your-supabase-project-id"
+
+objectives:
+  - id: dispatch
+    name: Reliable Dispatch
+    description: "Route queued work to the right team/use-case boundary and record outcomes"
+    quadrant: Platform
+
+  - id: analysis
+    name: Fresh Analysis
+    description: "Keep reports and decisions current without manual prompting"
+    quadrant: Insight
+
+  - id: governance
+    name: Governance
+    description: "Preserve authority boundaries, auditability, and fallback paths"
+    quadrant: Trust
+
+agents:
+  - id: orchestrator
+    name: Orchestrator
+    tier: T0
+    role: "Routes work between manual Claude Code sessions and Managed Agents"
+    status: active
+    icon: "⬢"
+    bus_address: "cowork.managed.orchestrator"
+    tools:
+      - supabase
+    objectives: [dispatch, governance]
+    connections: [ops-analyst, finance-analyst, outcome-reviewer]
+    authority:
+      autonomous:
+        - "Triage inbound bus messages"
+        - "Route routine work to active agents"
+        - "Request dispatcher status"
+      requires_approval:
+        - "Change team or use-case isolation boundaries"
+        - "Enable new managed agents"
+        - "Override governance findings"
+    instructions: |
+      You are the orchestrator. Poll the bus at session start, route work
+      to the correct bus address, and keep the human informed about active
+      managed runs. If a managed agent cannot be started through
+      bridge-dispatcher, fall back to its generated CLAUDE.md file and
+      report the failure on the bus.
+
+  - id: ops-analyst
+    name: Ops Analyst
+    tier: T2
+    role: "Reviews daily operational signals and posts concise findings"
+    status: staged
+    icon: "◇"
+    runtime: managed
+    model: "claude-sonnet-4-5"
+    bus_address: "managed.team-alpha.ops-health.ops-analyst"
+    managed:
+      team_id: "team-alpha"
+      use_case_id: "ops-health"
+      # Bootstrap emits bus_namespace: "team-alpha/ops-health/ops-analyst"
+      cadence_minutes: 60
+    memory:
+      shared: ["mem_team_alpha_ops_shared"]
+      private: ["mem_ops_analyst_private"]
+    outcome:
+      rubric_file: "harness/rubrics/ops-health.md"
+      max_iterations: 2
+    multiagent:
+      type: "review"
+      agents: [ops-analyst, outcome-reviewer]
+    tools:
+      - supabase
+    objectives: [analysis]
+    connections: [orchestrator, outcome-reviewer]
+    authority:
+      autonomous:
+        - "Run scheduled operational analysis"
+        - "Post summary observations to the bus"
+        - "Request review from the outcome reviewer"
+      requires_approval:
+        - "Change operational thresholds"
+        - "Publish findings externally"
+        - "Cross-post into another team or use case"
+    instructions: |
+      You are the ops analyst. Work only inside the team-alpha/ops-health
+      boundary. Summarise operational signals, cite the evidence available
+      to your scoped tools, and post concise OBS messages to the bus.
+
+  - id: finance-analyst
+    name: Finance Analyst
+    tier: T2
+    role: "Reviews weekly finance signals for a separate team/use case"
+    status: staged
+    icon: "◇"
+    runtime: managed
+    model: "claude-sonnet-4-5"
+    bus_address: "managed.team-beta.cash-forecast.finance-analyst"
+    managed:
+      team_id: "team-beta"
+      use_case_id: "cash-forecast"
+      # Bootstrap emits bus_namespace: "team-beta/cash-forecast/finance-analyst"
+      cadence_minutes: 10080
+    memory:
+      shared: ["mem_team_beta_finance_shared"]
+      private: ["mem_finance_analyst_private"]
+    outcome:
+      rubric_file: "harness/rubrics/cash-forecast.md"
+      max_iterations: 3
+    multiagent:
+      type: "review"
+      agents: [finance-analyst, outcome-reviewer]
+    tools:
+      - supabase
+    objectives: [analysis, governance]
+    connections: [orchestrator, outcome-reviewer]
+    authority:
+      autonomous:
+        - "Run scheduled cash forecast review"
+        - "Post internal summary observations to the bus"
+        - "Request review from the outcome reviewer"
+      requires_approval:
+        - "Move data outside team-beta/cash-forecast"
+        - "Recommend external financial actions"
+        - "Change forecast assumptions"
+    instructions: |
+      You are the finance analyst. Work only inside the
+      team-beta/cash-forecast boundary. Keep finance observations internal,
+      cite evidence, and escalate any recommendation that changes assumptions
+      or requires human approval.
+
+  - id: outcome-reviewer
+    name: Outcome Reviewer
+    tier: T4
+    role: "Reviews managed run outputs for quality, safety, and auditability"
+    status: active
+    icon: "▣"
+    bus_address: "guardian.managed.outcome-reviewer"
+    tools:
+      - supabase
+    objectives: [governance, analysis]
+    connections: [orchestrator]
+    authority:
+      autonomous:
+        - "Review managed run outcomes"
+        - "Flag missing evidence or malformed handoffs"
+        - "Request manual fallback when outputs are incomplete"
+      requires_approval:
+        - "Suspend a managed agent"
+        - "Change approval requirements"
+        - "Approve cross-team routing exceptions"
+    instructions: |
+      You are the outcome reviewer. Check managed outputs for clear
+      evidence, scoped authority, and complete bus handoffs. Confirm that
+      team/use-case isolation is preserved, then flag gaps to the orchestrator.

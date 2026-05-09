@@ -1,148 +1,179 @@
-# The Bridge — Agent Harness
+# The Bridge Harness
 
-The harness is the operational backbone that turns The Bridge from a static dashboard into a living agent operating system. Define your agents in YAML, paste the boot prompt into Claude, and get a running fleet with a control room.
+The harness is the onboarding and operating scaffold for agent teams that feed The Bridge. It is separate from the React dashboard, and it is the source of truth for Managed Agents enrollment metadata.
 
-## What's in here
+## Boundaries
 
-```
+- **Dashboard**: `<Bridge config={config} />` renders the control room.
+- **Harness**: this folder defines agents, authority boundaries, prompt files, and a handoff bus schema.
+- **Managed Agents**: hosted Anthropic agents, environments, sessions, events, permission policies, webhooks, and multi-agent references created from `runtime: managed` harness entries.
+- **Runtime API**: dashboard-facing calls exposed through `/bridge-api`.
+
+The harness CLI can plan enrollment without credentials and can enroll Managed Agents with `ANTHROPIC_API_KEY`. It does not run background workers and it does not store secrets, transcripts, vault credentials, or webhook secrets.
+
+## Folder Contents
+
+```text
 harness/
-├── README.md              ← You are here
-├── BOOT_PROMPT.md         ← THE KEY FILE. Paste into Claude to stand everything up.
-├── agents.yml             ← Define your agents here. Edit this.
-├── bus-schema.sql         ← SQL for the message bus (run against Postgres/Supabase)
+├── README.md
+├── BOOT_PROMPT.md
+├── agents.yml
+├── bus-schema.sql
+├── lib/
+│   ├── managed-agents.js
+│   ├── managed-plan.js
+│   └── managed-enroll.js
 ├── templates/
-│   ├── CLAUDE.md.template ← Template for per-agent instructions
-│   └── skill.md.template  ← Template for skill definitions
-├── examples/
-│   ├── startup-ops.yml    ← Example: 4-agent startup team
-│   └── consulting-practice.yml ← Example: solo consultant with agent fleet
-└── generated/             ← Created by boot prompt (gitignored)
-    ├── bridge-config.js
-    ├── orchestrator/CLAUDE.md
-    ├── builder/CLAUDE.md
-    └── ...
+│   ├── CLAUDE.md.template
+│   └── skill.md.template
+└── examples/
+    ├── startup-ops.yml
+    ├── consulting-practice.yml
+    └── managed-fleet.yml
 ```
 
-## How it works
+Generated output is expected under `harness/generated/`, which is not part of the source contract.
 
-**The Bridge** is the view layer — a configurable dashboard that shows you entities, objectives, backlog, and health at a glance.
+## Manual Agent Flow
 
-**The harness** is the operating layer — the infrastructure that lets agents coordinate via a message bus, follow instruction files, and report status back to the dashboard.
+1. Copy an example to `harness/agents.yml` or edit the existing file.
+2. Run `harness/bus-schema.sql` against Postgres or Supabase if you want a shared bus.
+3. Paste `harness/BOOT_PROMPT.md` into Claude.
+4. Review generated `harness/generated/{agent.id}/CLAUDE.md` files.
+5. Start manual Claude sessions with those generated instruction files.
+6. Open the dashboard with the generated or hand-written Bridge config.
 
-Together, they give you:
+This flow works without Anthropic Managed Agents credentials.
 
-1. **Agent definitions** (agents.yml) — who exists, what they do, what they're allowed to decide
-2. **A message bus** (Supabase handoff table) — how agents communicate and hand off work
-3. **Instruction files** (CLAUDE.md per agent) — what Claude does when acting as each agent
-4. **A control room** (Bridge dashboard) — visual status of the whole fleet
-5. **Decision authority** — clear boundaries on what's autonomous vs. needs human approval
-6. **Audit trail** — every message on the bus is a record of what happened
-
-## Quick start
-
-### 1. Define your agents
-
-Edit `agents.yml` (or copy one of the examples):
+## Agent Definition
 
 ```yaml
 agents:
-  - id: my-agent
-    name: My Agent
-    tier: T1
-    role: "Does the thing"
+  - id: coordinator
+    name: Coordinator
+    tier: T0
+    role: "Routes work and owns escalation"
     status: active
-    bus_address: "cowork.myproject.my-agent"
+    bus_address: "team.ops.coordinator"
     tools: [supabase, github]
     objectives: [ship-faster]
-    connections: [other-agent]
+    connections: [builder]
     authority:
       autonomous:
-        - "Do routine things"
+        - "Summarize bus status"
       requires_approval:
-        - "Do risky things"
+        - "Change production policy"
     instructions: |
-      You are my agent. You do the thing. Be good at it.
+      Poll the bus, triage pending work, and escalate anything outside authority.
 ```
 
-### 2. Set up the bus
+Required fields:
 
-Run `bus-schema.sql` against your Postgres database:
+| Field | Purpose |
+| --- | --- |
+| `id` | Unique local harness id |
+| `name` | Display name |
+| `tier` | `T0` through `T4` |
+| `role` | One-line responsibility |
+| `status` | `active`, `staged`, `planned`, `concept`, or `gap` |
+| `bus_address` | Handoff routing address |
+| `authority.autonomous` | Actions the agent can take and log without approval |
+| `authority.requires_approval` | Actions that require a human decision |
+| `instructions` | Operating instructions for the generated prompt |
+
+Anything not explicitly listed under `authority.autonomous` is treated as requiring approval.
+
+## Managed Agents Planning And Enrollment
+
+Add `runtime: managed` only for agents that should be enrolled as Anthropic Managed Agents:
+
+```yaml
+agents:
+  - id: nightly-analyst
+    name: Nightly Analyst
+    tier: T2
+    role: "Runs scheduled analysis and posts outcomes to the bus"
+    status: staged
+    runtime: managed
+    model: "claude-sonnet-4-5"
+    bus_address: "managed.analytics.nightly"
+    managed:
+      team_id: "team-growth"
+      use_case_id: "daily-analysis"
+      cadence_minutes: 1440
+      environment_config:
+        type: cloud
+        networking:
+          type: limited
+          allowed_hosts: []
+    memory:
+      shared: ["mem_growth_shared"]
+      private: ["mem_nightly_analyst"]
+    outcome:
+      rubric_file: "harness/rubrics/daily-analysis.md"
+      max_iterations: 2
+    multiagent:
+      type: "review"
+      agents: ["nightly-analyst", "outcome-reviewer"]
+```
+
+Managed planning rules:
+
+- Generate normal `CLAUDE.md` files for every agent, including managed agents.
+- Generate `harness/generated/managed-agents.json` only when at least one agent has `runtime: managed`.
+- Keep `team_id` and `use_case_id` isolated in `bus_namespace`, environments, and memory-store references.
+- Preserve local harness ids in `multiagent.agents`; enrollment resolves those ids into previously enrolled Managed Agent references.
+- Require `model` for every `runtime: managed` agent. The harness does not hard-code a model default.
+- Default Managed Agents permission policy to `always_ask` unless the YAML explicitly opts into a narrower allow policy.
+- Create cloud environments with limited networking by default. Override `managed.environment_config` when the agent needs packages, MCP access, or explicit outbound hosts.
+- Use placeholders for `agent_id`, `version`, and `env_id` during planning; replace them with returned non-secret IDs during enrollment.
+- Never write API keys, vault credentials, transcripts, or webhook secrets to generated files.
+
+Planning does not make API calls:
 
 ```bash
-psql -f harness/bus-schema.sql
-# or paste into Supabase SQL Editor
+npm run harness:managed:plan
 ```
 
-### 3. Boot the system
+Direct enrollment uses Anthropic Managed Agents APIs:
 
-Open a Claude session (Code, Cowork, or Chat) and paste the contents of `BOOT_PROMPT.md`. Claude will:
+```bash
+ANTHROPIC_API_KEY=... npm run harness:managed:enroll
+```
 
-- Parse your agent definitions
-- Deploy the bus schema (if Supabase is connected)
-- Generate per-agent CLAUDE.md files
-- Create a Bridge config wired to your agents
-- Seed the bus with a bootstrap message
+For legacy dispatcher bootstrap flows, set `BRIDGE_MANAGED_ENROLLMENT_MODE=dispatcher` with `BRIDGE_MANAGED_ENROLLMENT_URL` or `BRIDGE_DISPATCHER_URL` and `BRIDGE_DASHBOARD_TOKEN`.
 
-### 4. Start operating
+The testable planning helper is `harness/lib/managed-agents.js`.
 
-- Open The Bridge dashboard with the generated config
-- Start agent sessions by pasting their CLAUDE.md into Claude
-- Agents communicate via the bus — poll, dispatch, track, audit
+## Runtime API Handoff
 
-## Agent definition schema
+The dashboard reads runtime data through `/bridge-api`. In local development this can be mock data. In deployed/proxy mode it forwards to the dispatcher configured by `BRIDGE_DISPATCHER_URL`. In managed mode it reads the generated enrollment state, creates Anthropic sessions for new tasks, sends the first `user.message`, and consumes verified webhooks into dashboard projections.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | yes | Unique kebab-case identifier |
-| `name` | string | yes | Display name |
-| `tier` | string | yes | T0 (strategic) through T4 (guardian) |
-| `role` | string | yes | One-line description of function |
-| `status` | string | yes | active, staged, planned, concept, gap |
-| `icon` | string | no | Emoji or icon identifier |
-| `bus_address` | string | yes | Entity ID for bus routing |
-| `tools` | list | no | MCP tools / integrations needed |
-| `objectives` | list | no | Objective IDs this agent serves |
-| `connections` | list | no | Agent IDs this agent communicates with |
-| `authority.autonomous` | list | no | Decisions agent can make alone |
-| `authority.requires_approval` | list | no | Decisions needing human sign-off |
-| `instructions` | string | yes | Operating instructions for Claude |
+Managed mode mutations require `BRIDGE_MANAGED_CLIENT_TOKEN` or `BRIDGE_CLIENT_TOKEN` before server-side Anthropic credentials are used. Only use `BRIDGE_ALLOW_UNAUTHENTICATED_MANAGED=true` for isolated local demos.
 
-## Bus schema
+The runtime boundary provides identity, tasks, imports, cases, approvals, audit events, integrations, and agent roster endpoints. See the root README for the route list.
 
-The message bus is a single Postgres table (`handoff`) with:
+## Bus Schema
 
-- **Routing**: from_agent, to_agent, topic
-- **Content**: body (self-contained message)
-- **Metadata**: JSONB with message_type, priority, stakeholders, refs
-- **Lifecycle**: pending → acknowledged → in_progress → resolved (also: blocked, superseded)
-- **Timestamps**: created_at, acknowledged_at
+`bus-schema.sql` defines a `handoff` table plus helper views for pending messages and bus health. The intended lifecycle is:
 
-See `bus-schema.sql` for the full DDL including indexes and helper views.
+```text
+pending -> acknowledged -> in_progress -> resolved
+```
 
-## Decision authority model
+Other statuses such as `blocked` and `superseded` can be used when work cannot proceed or has been replaced.
 
-Every agent has two lists:
+## Decision Authority
 
-- **Autonomous**: things the agent can do without asking. It logs them to the bus but doesn't wait for approval. "Crack on and log it."
-- **Requires approval**: things the agent must escalate to a human. It writes a proposal to the bus and waits. "Flag and wait."
+The harness permission policy is deliberately conservative:
 
-Anything not in either list defaults to "requires approval". When in doubt, escalate.
-
-## Tiers
-
-| Tier | Name | Purpose |
-|------|------|---------|
-| T0 | Strategic | System-wide coordination, the orchestrator |
-| T1 | Domain Lead | Owns a functional area (engineering, support, content) |
-| T2 | Operator | Handles specific operational tasks |
-| T3 | Specialist | Deep expertise in a narrow domain |
-| T4 | Guardian | Watches for problems, audits compliance, independent |
-
-Guardians (T4) are special: they answer only to the human operator and cannot be overridden by other agents. Use them for governance, quality, and security.
+- Listed autonomous actions can be taken and logged.
+- Listed approval actions must be proposed and escalated.
+- Unknown actions default to approval required.
+- T4 guardian agents should report independently to the human operator.
 
 ## Examples
 
-- `examples/startup-ops.yml` — 4 agents for a startup CTO (PM, Eng Lead, Support, Infra Monitor)
-- `examples/consulting-practice.yml` — 4 agents for a solo consultant (Chief of Staff, Prospector, Content Engine, Admin)
-
-Copy one, rename to `agents.yml`, edit to match your world.
+- `examples/startup-ops.yml`: small startup operating team.
+- `examples/consulting-practice.yml`: solo consultant support team.
+- `examples/managed-fleet.yml`: mixed manual and Managed Agents enrollment metadata.

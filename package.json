@@ -6,12 +6,19 @@
   "type": "module",
   "exports": {
     ".": "./src/index.js",
+    "./dispatcherClient": "./src/dispatcherClient.js",
     "./theme": "./src/theme.js",
     "./types": "./src/types.js"
   },
   "scripts": {
     "dev": "cd examples/dev-server && npm run dev",
-    "setup": "bash scripts/onboard.sh"
+    "harness:managed:plan": "node harness/lib/managed-plan.js",
+    "harness:managed:enroll": "node harness/lib/managed-enroll.js",
+    "setup": "bash scripts/onboard.sh",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "yaml": "^2.8.4"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

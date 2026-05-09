@@ -6,6 +6,7 @@ examples/dev-server/node_modules/
 
 # User config (not shipped)
 examples/my-config.js
+.vercel/
 
 # Harness generated output (created by boot prompt)
 harness/generated/
@@ -46,3 +47,4 @@ yarn-error.log*
 .cache/
 tmp/
 temp/
+.vercel
